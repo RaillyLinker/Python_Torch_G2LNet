@@ -1,19 +1,21 @@
-import os
-import time
 import glob
+import os
 import random
+import time
+
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from torch.optim.lr_scheduler import CosineAnnealingLR
 from datasets import load_dataset
-from torchvision import transforms
-from tqdm import tqdm
-from nbb import UpsampleConcatClassifier  # 사용자 정의 모델 import
-from torchvision.transforms import AutoAugment, AutoAugmentPolicy, RandomApply
 from torch.amp import GradScaler
 from torch.amp import autocast
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from torchvision import transforms
+from torchvision.transforms import ColorJitter, RandomErasing
+from tqdm import tqdm
+
+from nbb import UpsampleConcatClassifier  # 사용자 정의 모델 import
 
 # -----------------------------------
 # 설정: 시드 고정
@@ -30,6 +32,7 @@ torch.backends.cudnn.benchmark = False
 # 사전 학습된 모델 경로 (없으면 None)
 # -----------------------------------
 PRETRAINED_MODEL_PATH = None  # 또는 경로 문자열
+# PRETRAINED_MODEL_PATH = "./checkpoints/save_last.pth"
 
 
 # -------------------------
@@ -56,22 +59,35 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
 # ----------------------------
 # 전처리 정의
 # ----------------------------
+
+class RandomizedGaussianBlur:
+    def __init__(self, kernel_sizes=(3, 5), sigma=(0.1, 1.5), p=0.3):
+        self.kernel_sizes = kernel_sizes
+        self.sigma = sigma
+        self.p = p
+
+    def __call__(self, img):
+        if random.random() < self.p:
+            k = random.choice(self.kernel_sizes)
+            return transforms.GaussianBlur(kernel_size=k, sigma=self.sigma)(img)
+        return img
+
+
 train_transform = transforms.Compose([
-    transforms.RandomResizedCrop((243, 243)),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomRotation(degrees=15),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-    transforms.RandomGrayscale(p=0.1),
-    transforms.GaussianBlur(kernel_size=3, sigma=(0.5, 1.5)),
-    transforms.RandomPerspective(distortion_scale=0.2, p=0.3),
-    RandomApply([AutoAugment(policy=AutoAugmentPolicy.IMAGENET)], p=0.5),
+    transforms.RandomResizedCrop(320, scale=(0.5, 1.0), ratio=(0.75, 1.33)),  # 랜덤 크롭 + 다양한 비율
+    transforms.RandomHorizontalFlip(p=0.5),  # 좌우 반전
+    transforms.RandomApply([ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8),  # 색상 변화
+    RandomizedGaussianBlur(p=0.3),  # 블러
+    transforms.RandomApply([transforms.RandomPerspective(distortion_scale=0.1)], p=0.3),  # 원근 왜곡
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    RandomErasing(p=0.25, scale=(0.02, 0.1), ratio=(0.3, 3.3)),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
 ])
 
 val_transform = transforms.Compose([
-    transforms.Resize((243, 243)),
-    transforms.CenterCrop((243, 243)),
+    transforms.Resize((350, 350)),
+    transforms.CenterCrop((320, 320)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
@@ -111,8 +127,8 @@ if __name__ == "__main__":
     val_ds = load_dataset("food101", split="validation")
 
     # 일부 샘플만 선택 (shuffle 먼저 하면 더 랜덤)
-    train_ds = train_ds.shuffle(seed=SEED).select(range(400))
-    val_ds = val_ds.shuffle(seed=SEED).select(range(100))
+    # train_ds = train_ds.shuffle(seed=SEED).select(range(400))
+    # val_ds = val_ds.shuffle(seed=SEED).select(range(100))
 
     train_ds = train_ds.map(transform_train, num_proc=1)
     train_ds = train_ds.filter(lambda x: x is not None)
