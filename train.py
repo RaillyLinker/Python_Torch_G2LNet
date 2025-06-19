@@ -74,7 +74,7 @@ class RandomizedGaussianBlur:
 
 
 train_transform = transforms.Compose([
-    transforms.RandomResizedCrop(320, scale=(0.5, 1.0), ratio=(0.75, 1.33)),  # 랜덤 크롭 + 다양한 비율
+    transforms.RandomResizedCrop(256, scale=(0.5, 1.0), ratio=(0.75, 1.33)),  # 랜덤 크롭 + 다양한 비율
     transforms.RandomHorizontalFlip(p=0.5),  # 좌우 반전
     transforms.RandomApply([ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8),  # 색상 변화
     RandomizedGaussianBlur(p=0.3),  # 블러
@@ -87,7 +87,7 @@ train_transform = transforms.Compose([
 
 val_transform = transforms.Compose([
     transforms.Resize((350, 350)),
-    transforms.CenterCrop((320, 320)),
+    transforms.CenterCrop((256, 256)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
