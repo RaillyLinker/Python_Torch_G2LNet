@@ -38,8 +38,8 @@ class G2LNet(nn.Module):
         result_feats_list = []
         x_h, x_w = x.shape[2], x.shape[3]
 
-        # 컬러 특징 저장(256x256)
-        result_feats_list.append(x)
+        # 컬러 특징 저장(128x128)
+        result_feats_list.append(F.interpolate(x, scale_factor=0.5, mode='nearest'))
 
         # 분석을 위한 흑백 변환
         # 컬러 이미지는 그 자체로 색이란 특징을 지닌 특징 맵이고, 형태 특징을 구하기 위한 입력 값은 흑백으로 충분
@@ -53,7 +53,13 @@ class G2LNet(nn.Module):
                 x = torch.cat([gray_feats, F.interpolate(x, size=(x_h, x_w), mode='nearest')], dim=1)
             x = block(x)
 
-        return x
+        # 추출된 특징 저장
+        result_feats_list.append(x)
+
+        # 특징 정보들 torch concat
+        essential_feats = torch.cat(result_feats_list, dim=1)
+
+        return essential_feats
 
 
 # ----------------------------------------------------------------------------------------------------------------------
